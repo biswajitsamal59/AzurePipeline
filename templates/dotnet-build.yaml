@@ -1,0 +1,35 @@
+parameters:
+  application: ''
+  vstsFeed: ''
+  branch: ''
+  testApplication: ''
+
+steps:
+- task: DotNetCoreCLI@2
+  displayName: 'dotnet restore ${{parameters.branch}}'
+  inputs:
+    command: restore
+    projects: '**/*(${{parameters.project}}|${{parameters.testApplication}}).csproj'
+    vstsFeed: ${{parameters.vstsFeed}}
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/${{parameters.branch}}'))
+
+- task: DotNetCoreCLI@2
+  displayName: 'dotnet test'
+  inputs:
+    command: test
+    projects: '**/**/${{parameters.testApplication}}.csproj'
+
+- task: DotNetCoreCLI@2
+  displayName: 'dotnet build'
+  inputs:
+    projects: '**/**/${{parameters.project}}.csproj'
+
+- task: DotNetCoreCLI@2
+  displayName: 'dotnet publish'
+  inputs:
+    command: publish
+    publishWebProjects: false
+    projects: '**/**/${{parameters.project}}.csproj'
+    arguments: '--configuration $(BuildConfiguration) --output $(Build.ArtifactStagingDirectory)/app'
+    zipAfterPublish: false
+    modifyOutputPath: false

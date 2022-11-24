@@ -1,9 +1,21 @@
 name: Provision Infra using Terraform
 trigger:
-  - main
+  - none
 pool: 
   vmImage: ubuntu-latest
 
+# Define the repo list which will be used in this pipeline other than the 
+# repo containing this yaml file  
+resources:
+  repositories: 
+    - repository: external-repo
+      type: git
+      name: <project-name>/<repo-name>
+      ref: development
+      trigger:
+      - development
+
+# Parameters will prompt users to provide vaule while running the pipeline  
 parameters:
   - name: action
     type: string
@@ -13,17 +25,83 @@ parameters:
       - apply
       - destroy
 
-  - name: stage
+  - name: environment
     type: string
     default: dev
     values:
       - dev
       - qa
-      - stage
       - prod
 
+  - name: application
+    type: string
+    default: test
+    values:
+      - test
+      - test1
+      - test2
+
+  - name: location
+    type: string
+    default: eastus
+    values:
+      - eastus
+      - eastus2
+
+variables:
+  - name: tfversion
+    value: 1.3.5
+  - name: serviceConnection
+    ${{ if eq( parameters['stage'], 'dev') }}: 
+      value: "DEV-ServiceConnection"
+    ${{ if eq( parameters['stage'], 'qa' ) }}: 
+      value: "QA-ServiceConnection"
+    ${{ if eq( parameters['stage'], 'prod') }}: 
+      value: "PROD-ServiceConnection"
+  - name: testApplication
+    value: "test.test"
+  - ${{ if eq( parameters.environment, 'dev') }}:
+    - name: branch
+      value: 'development'
+    - name: vstsFeed
+      value: '0be89bbf-9a38-4307-998c-e36f23c95cb4'
+  - ${{ if eq( parameters.environment, 'qa') }}:
+      - name: branch
+        value: 'integration'
+      - name: vstsFeed
+        value: '55d3ebad-c15f-4b30-932c-82953d546f0a'
+  - ${{ if eq( parameters.environment, 'live') }}:
+      - name: branch
+        value: 'staging'
+      - name: vstsFeed
+        value: '97293f29-2d7b-4c42-a155-2eb4cd74ffa2'
+
 stages:
-  - stage: Initilize_VN
+  - stage: Provision_Infra
+    displayName: 'Provision Infra'
     jobs:
-      - job: 
+      - job: Infra
+        steps:
+          - checkout: self
+          - template: template/terraform-pipeline.yaml
+            parameters:
+              environment: ${{ lower(parameters.environment) }}
+              location: ${{ parameters.location }}
+              serviceConnection: $(serviceConnection)
+              tfversion: $(tfversion)
+              application: ${{ parameters.application }}
+
+  - stage: Build-Application
+    displayName: 'Build Application'
+    jobs:
+      - job: Build-Application
+        steps:
+          - checkout: external-repo
+          - template: template/dotnet-build.yaml
+            parameters:
+              application: ${{ parameters.application }}
+              vstsFeed: $(vstsFeed)
+              branch: $(branch)
+              testApplication: $(testApplication)
+              
   
