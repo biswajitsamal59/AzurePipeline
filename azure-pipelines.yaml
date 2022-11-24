@@ -1,0 +1,29 @@
+name: Provision Infra using Terraform
+trigger:
+  - main
+pool: 
+  vmImage: ubuntu-latest
+
+parameters:
+  - name: action
+    type: string
+    default: plan
+    values:
+      - plan
+      - apply
+      - destroy
+
+  - name: stage
+    type: string
+    default: dev
+    values:
+      - dev
+      - qa
+      - stage
+      - prod
+
+stages:
+  - stage: Initilize_VN
+    jobs:
+      - job: 
+  
