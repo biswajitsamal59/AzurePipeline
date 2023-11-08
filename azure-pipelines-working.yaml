@@ -7,6 +7,9 @@ trigger:
 
 pool: 
   vmImage: ubuntu-latest
+
+# variables:
+#   anyTfChanges: false
   
 steps:
   - task: TerraformInstaller@0
@@ -27,9 +30,10 @@ steps:
       backendAzureRmContainerName: 'subscription-tfstate'
       backendAzureRmKey: 'terraform.tfstate'
     env:
-      ARM_USE_AZUREAD: true
+      ARM_USE_AZUREAD: true # Optional (Previously was being used when WIF was a preview in Azure DevOps)
 
   - task: TerraformTaskV4@4
+    name: terraformPlan # This task name used to check if there are any changes needed
     displayName: Terraform Plan
     inputs:
       provider: 'azurerm'
@@ -38,9 +42,51 @@ steps:
       environmentServiceNameAzureRM: 'Azure-Service-Connection-Development-WIF'
       commandOptions: '-out=terraform-tfplan'
     env:
-      ARM_USE_AZUREAD: true
+      ARM_USE_AZUREAD: true # Optional
+
+  # - bash: |
+  #     #!/bin/bash
+
+  #     # Run terraform show and store the JSON output in a variable
+  #     plan=$(terraform show -json terraform-tfplan)
+
+  #     # Parse the JSON using jq and extract the actions
+  #     actions=$(echo "$plan" | jq -r '.resource_changes[].change.actions[]')
+
+  #     echo "Terraform actions : $actions"
+
+  #     if [[ $actions == *create* || $actions == *delete* || $actions == *update* ]]; then
+  #       echo "Terraform will perform the following actions : $actions"
+  #       echo "##vso[task.setvariable variable=anyTfChanges;]true"
+  #     else
+  #       echo "There is no change detected in Terraform terraform-tfplan file"
+  #     fi
+  #   workingDirectory: '$(System.DefaultWorkingDirectory)/Terraform'
+  #   displayName: Check Changes Required
+
+  # - task: PowerShell@2  # For windows agent
+  #   displayName: detect any terraform change
+  #   inputs:
+  #     workingDirectory: '$(System.DefaultWorkingDirectory)/skip-step'
+  #     targetType: 'inline'
+  #     script: |
+  #       # Write-Host "LASTEXITCODE : $LASTEXITCODE"
+  #       $plan = $(terraform show -json tfplan | ConvertFrom-Json)
+  #       $actions = $plan.resource_changes.change.actions
+  #       Write-Host "Terraform actions : $actions"
+  #       if (($actions -contains 'create') -or ($actions -contains 'delete') -or ($actions -contains 'update'))
+  #       {
+  #         Write-Host "Terraform will perform the following actions : $actions"
+  #         Write-Host "##vso[task.setvariable variable=anyTfChanges;]true"
+  #       }
+  #       else
+  #       {
+  #         Write-Host "There is no change detected in Terraform tfplan file"
+  #       }
 
   - task: TerraformTaskV4@4
+    # condition: eq(variables.anyTfChanges, true)
+    condition: eq(variables['terraformPlan.changesPresent'], 'true') # changesPresent: This varaible is set to true if the plan command finds changes to apply
     displayName: Terraform Apply
     inputs:
       provider: 'azurerm'
@@ -49,4 +95,4 @@ steps:
       commandOptions: '--auto-approve'
       environmentServiceNameAzureRM: 'Azure-Service-Connection-Development-WIF'
     env:
-      ARM_USE_AZUREAD: true
+      ARM_USE_AZUREAD: true # Optional
