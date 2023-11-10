@@ -1,0 +1,62 @@
+name: Provision Infra using Terraform
+trigger:
+- none
+
+pool: 
+  vmImage: ubuntu-latest
+
+  
+steps:
+  - task: UseDocker@2
+    displayName: 'Use Docker'
+    inputs:
+      command: 'install'
+      releaseType: 'stable'
+
+  - task: TerraformInstaller@0
+    displayName: Install Terraform
+    inputs:
+      terraformVersion: 'latest'
+
+  - task: TerraformTaskV4@4
+    displayName: Terraform Init
+    inputs:
+      provider: 'azurerm'
+      command: 'init'
+      workingDirectory: '$(System.DefaultWorkingDirectory)/Terraform'
+      backendServiceArm: 'Azure-Service-Connection-Development-WIF'
+      backendAzureRmResourceGroupName: 'rg-juiceshop-dev-lod'
+      backendAzureRmStorageAccountName: 'terraform59sa'
+      backendAzureRmContainerName: 'subscription-tfstate'
+      backendAzureRmKey: 'terraform.tfstate'
+
+  - script: |
+      # Run the Docker command to scan code
+      docker run -t -v $(System.DefaultWorkingDirectory)/Terraform:/path checkmarx/kics:latest scan -p /path -t Terraform --report-formats json,sarif -o path/
+    displayName: 'Run Kicks Scan'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Kicks Scan result'
+    inputs:
+      pathToPublish: $(System.DefaultWorkingDirectory)/results.sarif
+      artifactName: CodeAnalysisLogs
+
+  - task: TerraformTaskV4@4
+    name: terraformPlan
+    displayName: Terraform Plan
+    inputs:
+      provider: 'azurerm'
+      command: plan
+      workingDirectory: '$(System.DefaultWorkingDirectory)/Terraform'
+      environmentServiceNameAzureRM: 'Azure-Service-Connection-Development-WIF'
+      commandOptions: '-out=terraform-tfplan'
+
+  - task: TerraformTaskV4@4
+    condition: eq(variables['terraformPlan.changesPresent'], 'true')
+    displayName: Terraform Apply
+    inputs:
+      provider: 'azurerm'
+      command: 'apply'
+      workingDirectory: '$(System.DefaultWorkingDirectory)/Terraform'
+      commandOptions: '--auto-approve'
+      environmentServiceNameAzureRM: 'Azure-Service-Connection-Development-WIF'
